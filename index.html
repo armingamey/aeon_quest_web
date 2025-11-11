@@ -1,0 +1,154 @@
+<!doctype hthttps://github.com/armingamey/aeon_quest_web/tree/mainml>
+<html lang="cs">
+<head>
+<meta charshttps://github.com/armingamey/aeon_quest_web/tree/mainet="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Aeon Quest</title>
+<style>
+body { margin:0; font-family: monospace; background:#071021; color:white; user-select:none; overflow:hidden;}
+#gameContainer { width:100vw; height:100vh; position:relative;}
+button { padding:10px 14px; border-radius:6px; border:none; background:#1F6FEB; color:white; font-weight:700; cursor:pointer; font-size:14px; }
+#menu { position:absolute; top:0; left:0; width:100%; height:100%; background:linear-gradient(180deg,#071021,#0B1A36); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:10; }
+#menu h1 { font-size:48px; color:#9AE66E; margin-bottom:40px; }
+#hud { position:absolute; top:0; width:100%; height:80px; padding:10px; display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.6);}
+#dialog { position:absolute; bottom:0; left:0; right:0; background: rgba(0,0,0,0.7); padding:10px; font-size:16px; min-height:50px;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+</head>
+<body>
+<div id="gameContainer"></div>
+
+<!-- Menu -->
+<div id="menu">
+<h1>Aeon Quest</h1>
+<button id="startBtn">Nová kampaň</button>
+</div>
+
+<!-- HUD -->
+<div id="hud" style="display:none;">
+<div id="turnInfo">Tah hráče</div>
+<div id="resources" style="margin-left:auto;">Krystaly: 0</div>
+</div>
+
+<div id="dialog" style="display:none;">AEON: Vítej, veliteli! Prozkoumej mapu a poraz nepřátele.</div>
+
+<script>
+const config = {
+    type: Phaser.AUTO,
+    parent: 'gameContainer',
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: 0x071021,
+    scene: { preload, create, update },
+    scale: { mode: Phaser.Scale.RESIZE }
+};
+const game = new Phaser.Game(config);
+
+let hudEl, dialogEl, turnInfoEl;
+let crystals = 0;
+let playerUnits = [];
+let enemyUnits = [];
+let treasures = [];
+let mapNodes = [];
+let turn = "player"; // player / enemy
+
+function preload() {
+    this.load.image('hero','https://i.imgur.com/H6Q0oQO.png');  // hrdina
+    this.load.image('knight','https://i.imgur.com/9X0JxOS.png'); // rytíř
+    this.load.image('drone','https://i.imgur.com/lB2N1Gd.png');  // dron
+    this.load.image('orc','https://i.imgur.com/lB2N1Gd.png');   // nepřítel
+    this.load.image('treasure','https://i.imgur.com/2DEy3Xv.png'); // poklad
+}
+
+function create() {
+    const scene = this;
+    hudEl = document.getElementById('resources');
+    dialogEl = document.getElementById('dialog');
+    turnInfoEl = document.getElementById('turnInfo');
+
+    document.getElementById('startBtn').onclick = ()=>{
+        document.getElementById('menu').style.display='none';
+        document.getElementById('hud').style.display='flex';
+        document.getElementById('dialog').style.display='block';
+        startGame(scene);
+    };
+}
+
+function startGame(scene){
+    crystals = 10;
+    updateHUD();
+
+    // vytvoření mapy + jednotek
+    mapNodes = [
+        {x:scene.scale.width*0.3, y:scene.scale.height*0.4},
+        {x:scene.scale.width*0.5, y:scene.scale.height*0.6},
+        {x:scene.scale.width*0.7, y:scene.scale.height*0.3}
+    ];
+    for(let n of mapNodes){
+        treasures.push(scene.add.image(n.x,n.y,'treasure').setScale(0.3));
+    }
+
+    // hráčské jednotky
+    playerUnits.push(scene.add.image(80,scene.scale.height/2,'hero').setScale(0.5).setInteractive());
+    playerUnits.push(scene.add.image(80,scene.scale.height/2+60,'knight').setScale(0.5).setInteractive());
+    playerUnits.push(scene.add.image(80,scene.scale.height/2-60,'drone').setScale(0.4).setInteractive());
+
+    // nepřátelské jednotky
+    enemyUnits.push(scene.add.image(scene.scale.width-100,scene.scale.height/2,'orc').setScale(0.5));
+    enemyUnits.push(scene.add.image(scene.scale.width-100,scene.scale.height/2+80,'orc').setScale(0.5));
+    enemyUnits.push(scene.add.image(scene.scale.width-100,scene.scale.height/2-80,'orc').setScale(0.5));
+
+    dialog("AEON: Prozkoumej mapu a sbírej poklady, pak zaútoč na nepřátele.");
+    
+    // Tap pro pohyb / sběr pokladu
+    scene.input.on('pointerdown', function(pointer){
+        if(turn !== "player") return;
+        const px = pointer.worldX; const py = pointer.worldY;
+        for(let u of playerUnits){
+            scene.tweens.add({
+                targets:u,
+                x:px,
+                y:py,
+                duration:500,
+                onComplete:()=>{checkTreasure(u,scene);}
+            });
+        }
+        turn = "enemy";
+        turnInfoEl.innerText = "Tah nepřítele";
+        setTimeout(()=>{enemyTurn(scene)},1000);
+    });
+}
+
+function updateHUD(){
+    hudEl.innerText = "Krystaly: "+crystals;
+}
+
+function dialog(text){
+    dialogEl.innerText=text;
+    setTimeout(()=>{dialogEl.innerText="AEON sleduje situaci..."},4000);
+}
+
+function checkTreasure(unit,scene){
+    for(let t of treasures){
+        if(t.visible && Phaser.Math.Distance.Between(unit.x,unit.y,t.x,t.y)<40){
+            t.setVisible(false);
+            crystals +=5;
+            updateHUD();
+            dialog("Poklad nalezen! Krystaly +5");
+        }
+    }
+}
+
+function enemyTurn(scene){
+    // jednoduchý AI pohyb nepřátel
+    for(let e of enemyUnits){
+        const target = playerUnits[Math.floor(Math.random()*playerUnits.length)];
+        scene.tweens.add({targets:e, x:target.x, y:target.y, duration:500});
+    }
+    setTimeout(()=>{turn="player"; turnInfoEl.innerText="Tah hráče";},700);
+}
+
+function update(){}
+</script>
+</body>
+</html>
